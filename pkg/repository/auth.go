@@ -44,3 +44,20 @@ func (r *AuthPostgres) GetTokenById(id int) (models.RefreshToken, error) {
 
 	return token, err
 }
+
+func (r *AuthPostgres) GetUserById(guid uuid.UUID) (models.User, error) {
+	var user models.User
+
+	query := fmt.Sprintf(`SELECT email, ip FROM %s WHERE id = $1`, usersTable)
+	err := r.db.Get(&user, query, guid)
+
+	return user, err
+}
+
+func (r *AuthPostgres) DeleteTokenByUserId(guid uuid.UUID) error {
+
+	query := fmt.Sprintf(`DELETE FROM %s WHERE user_id = $1`, tokensTable)
+	_, err := r.db.Exec(query, guid)
+
+	return err
+}

@@ -12,6 +12,8 @@ type Authorizer interface {
 	CreateUser(user models.User) error
 	SaveToken(token string, user_id uuid.UUID, expDate time.Time) (int, error)
 	GetTokenById(id int) (models.RefreshToken, error)
+	GetUserById(guid uuid.UUID) (models.User, error)
+	DeleteTokenByUserId(guid uuid.UUID) error
 }
 
 type Repository struct {

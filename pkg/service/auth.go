@@ -21,6 +21,7 @@ func (s *AuthService) CreateUser(user models.User) error {
 }
 
 func (s *AuthService) SaveToken(token string, user_id uuid.UUID, expDate time.Time) (int, error) {
+	s.repo.DeleteTokenByUserId(user_id)
 	return s.repo.SaveToken(token, user_id, expDate)
 }
 

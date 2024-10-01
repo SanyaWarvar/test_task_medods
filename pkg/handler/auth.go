@@ -7,9 +7,15 @@ import (
 	"github.com/SanyaWarvar/auth/pkg/models"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/sirupsen/logrus"
 )
 
 func (h *Handler) auth(c *gin.Context) {
+	if data := c.GetHeader("X-Forwarded-For"); data == "" {
+		c.AbortWithStatusJSON(http.StatusBadRequest, map[string]string{"details": "Missing header X-Forward-From"})
+		return
+	}
+
 	var input models.User
 	guidString := c.Params.ByName("guid")
 	guid, err := uuid.Parse(guidString)
@@ -25,7 +31,7 @@ func (h *Handler) auth(c *gin.Context) {
 	input.Guid = guid
 
 	input.Ip = c.ClientIP() // нужен header "X-Forwarded-For"
-	err = h.services.Authorization.CreateUser(input)
+	err = h.services.IAuthorization.CreateUser(input)
 	if err != nil {
 		c.AbortWithStatusJSON(http.StatusBadRequest, map[string]string{"details": err.Error()})
 		return
@@ -44,6 +50,12 @@ func (h *Handler) auth(c *gin.Context) {
 }
 
 func (h *Handler) refresh(c *gin.Context) {
+
+	if data := c.GetHeader("X-Forwarded-For"); data == "" {
+		c.AbortWithStatusJSON(http.StatusBadRequest, map[string]string{"details": "Missing header X-Forward-From"})
+		return
+	}
+
 	var input models.RefreshInput
 	err := c.BindJSON(&input)
 	if err != nil {
@@ -51,7 +63,7 @@ func (h *Handler) refresh(c *gin.Context) {
 		return
 	}
 
-	decodedAccessClaims, err := h.services.JwtManager.ParseClaims(input.AccessToken, &models.AccessTokenClaims{})
+	decodedAccessClaims, err := h.services.IJwtManager.ParseClaims(input.AccessToken, &models.AccessTokenClaims{})
 	if err != nil {
 		c.AbortWithStatusJSON(http.StatusBadRequest, map[string]string{"details": err.Error()})
 		return
@@ -68,16 +80,22 @@ func (h *Handler) refresh(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusBadRequest, map[string]string{"details": "invalid user id or token is exp"})
 		return
 	}
-	result := h.services.JwtManager.CompareTokens(hashedToken.Token, input.RefreshToken)
+	result := h.services.IJwtManager.CompareTokens(hashedToken.Token, input.RefreshToken)
 	if !result {
 		c.AbortWithStatusJSON(http.StatusBadRequest, map[string]string{"details": "tokens dont match"})
 		return
 	}
 
-	refreshToken, accessToken, err := h.GeneratePair(decodedAccessClaims.Guid, decodedAccessClaims.Ip)
+	refreshToken, accessToken, err := h.GeneratePair(decodedAccessClaims.Guid, c.ClientIP())
 	if err != nil {
 		c.AbortWithStatusJSON(http.StatusBadRequest, map[string]string{"details": err.Error()})
 		return
+	}
+
+	if c.ClientIP() != decodedAccessClaims.Ip {
+		logrus.Infof("Change ip from %s to %s", decodedAccessClaims.Ip, c.ClientIP())
+		go h.services.IEmailSmtp.Warning(decodedAccessClaims.Guid, c.ClientIP())
+		// отправка сообщения очень долгая операция (около 3 секунд) поэтому запускаю в горутине, чтобы не ждать
 	}
 
 	c.JSON(http.StatusOK, map[string]string{
@@ -88,20 +106,20 @@ func (h *Handler) refresh(c *gin.Context) {
 }
 
 func (h *Handler) GeneratePair(guid uuid.UUID, ip string) (string, string, error) {
-	refreshToken, err := h.services.JwtManager.GenerateRefreshToken(guid, ip)
+	refreshToken, err := h.services.IJwtManager.GenerateRefreshToken(guid, ip)
 	if err != nil {
 		return "", "", err
 	}
-	refreshHash, err := h.services.JwtManager.HashToken(refreshToken)
-	if err != nil {
-		return "", "", err
-	}
-
-	refreshId, err := h.services.Authorization.SaveToken(refreshHash, guid, time.Now().AddDate(0, 1, 0))
+	refreshHash, err := h.services.IJwtManager.HashToken(refreshToken)
 	if err != nil {
 		return "", "", err
 	}
 
-	accessToken, err := h.services.JwtManager.GenerateAccesstoken(guid, ip, refreshId)
+	refreshId, err := h.services.IAuthorization.SaveToken(refreshHash, guid, time.Now().AddDate(0, 1, 0))
+	if err != nil {
+		return "", "", err
+	}
+
+	accessToken, err := h.services.IJwtManager.GenerateAccesstoken(guid, ip, refreshId)
 	return refreshToken, accessToken, err
 }
