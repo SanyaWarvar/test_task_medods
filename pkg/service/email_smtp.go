@@ -14,11 +14,10 @@ type EmailSettings struct {
 	Address       string
 }
 
-func NewEmailSettings(ownerEmail, ownerPassword, addr string) *EmailSettings {
+func NewEmailSettings(ownerEmail, ownerPassword string) *EmailSettings {
 	return &EmailSettings{
 		OwnerEmail:    ownerEmail,
 		OwnerPassword: ownerPassword,
-		Address:       addr,
 	}
 }
 

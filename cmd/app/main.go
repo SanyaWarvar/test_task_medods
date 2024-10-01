@@ -45,7 +45,7 @@ func main() {
 		AccessTTL: accessTTL,
 		Method:    jwt.SigningMethodHS512,
 	}
-	smtpSettings := service.NewEmailSettings(os.Getenv("OWNER_EMAIL"), os.Getenv("OWNER_PASSWORD"), os.Getenv("SMTP_ADDR"))
+	smtpSettings := service.NewEmailSettings(os.Getenv("OWNER_EMAIL"), os.Getenv("OWNER_PASSWORD"))
 
 	services := service.NewService(repos, config, smtpSettings)
 	handlers := handler.NewHandler(services)
